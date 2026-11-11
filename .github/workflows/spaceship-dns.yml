@@ -1,0 +1,62 @@
+name: Provision optiontrade subdomain in Spaceship
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/spaceship-dns.yml']
+permissions:
+  contents: read
+jobs:
+  dns:
+    runs-on: [self-hosted, Linux, X64, server123, suaveforge-deploy, suaveforge-org]
+    timeout-minutes: 3
+    steps:
+      - name: Create only optiontrade A record and read back safely
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          /home/ggul-docker/bin/docker -H unix:///home/ggul-docker/run/docker.sock run --rm -i --network host --read-only \
+            -v /home/suaveforge/secrets/spaceship.env:/run/spaceship.env:ro \
+            python:3.11-alpine python - <<'PY'
+          import json,urllib.request,urllib.error,urllib.parse
+          env={}
+          for line in open('/run/spaceship.env',encoding='utf-8'):
+              if '=' in line and not line.lstrip().startswith('#'):
+                  k,v=line.strip().split('=',1)
+                  env[k.strip()]=v.strip().strip('"').strip("'")
+          key,secret=env.get('SPACESHIP_API_KEY'),env.get('SPACESHIP_API_SECRET')
+          if not key or not secret:raise RuntimeError('SPACESHIP_CREDENTIALS_MISSING')
+          domain='suaveforge.com'
+          hostname='optiontrade'
+          target='211.255.25.123'
+          base='https://spaceship.dev/api/v1/dns/records/'+domain
+          headers={'X-Api-Key':key,'X-Api-Secret':secret,'Accept':'application/json'}
+          def get_records():
+              req=urllib.request.Request(base+'?take=500&skip=0',headers=headers)
+              with urllib.request.urlopen(req,timeout=20) as r:o=json.load(r)
+              if isinstance(o,dict):
+                  if isinstance(o.get('items'),list):return o['items']
+                  if isinstance(o.get('records'),list):return o['records']
+                  if isinstance(o.get('data'),dict) and isinstance(o['data'].get('items'),list):return o['data']['items']
+              raise RuntimeError('DNS_LIST_RESPONSE_SHAPE_UNKNOWN')
+          rows=get_records()
+          matches=[r for r in rows if str(r.get('name','')).lower().rstrip('.') in (hostname,hostname+'.'+domain)]
+          if matches:
+              if any(str(r.get('type','')).upper()!='A' or str(r.get('address') or '')!=target for r in matches):
+                  raise RuntimeError('TARGET_HAS_DIFFERENT_DNS_RECORD__MANUAL_REVIEW_REQUIRED')
+              print('OPTIONTRADE_DNS=ALREADY_CONFIGURED')
+          else:
+              body=json.dumps({'force':False,'items':[{'type':'A','name':hostname,'address':target,'ttl':600}]}).encode()
+              req=urllib.request.Request(base,data=body,headers={**headers,'Content-Type':'application/json'},method='PUT')
+              try:
+                  with urllib.request.urlopen(req,timeout=25) as response: status=response.status
+              except urllib.error.HTTPError as e:
+                  print('OPTIONTRADE_DNS=WRITE_FAILED_HTTP_'+str(e.code))
+                  raise
+              print('OPTIONTRADE_DNS=WRITE_HTTP_'+str(status))
+          after=[r for r in get_records() if str(r.get('name','')).lower().rstrip('.') in (hostname,hostname+'.'+domain)]
+          verified=any(str(x.get('type','')).upper()=='A' and str(x.get('address') or '')==target for x in after)
+          print('OPTIONTRADE_DNS='+('VERIFIED' if verified else 'NOT_VERIFIED'))
+          print('OPTIONTRADE_FQDN=optiontrade.suaveforge.com')
+          if not verified:raise RuntimeError('DNS_READBACK_FAILED')
+          PY
