@@ -13,8 +13,8 @@ test "$(stat -c '%a' "$ROOT/secrets/ls-paper.env")" = 600 || { echo "Secret env 
 # LIVE key is mounted read-only solely for public product-class margin data.
 # Never enable orders or switch the existing market-data bridge from PAPER.
 LIVE_KEY=/root/market-indicator-card/secrets/ls_openapi.local.json
-test -f "$LIVE_KEY" || { echo "LIVE_MARGIN_KEY_MISSING"; exit 3; }
-test -r "$LIVE_KEY" || { echo "LIVE_MARGIN_KEY_UNREADABLE"; exit 3; }
+# The self-hosted runner and Docker daemon have different filesystem views.
+# Test the host secret from inside Docker, not from the runner namespace.
 # Original LIVE secret may be owner-only (0600). Stage a separate owner-only
 # read-only runtime copy for non-root container UID 11001; never relax original.
 "$CLI" -H "$SOCK" run --rm --network none --read-only \
