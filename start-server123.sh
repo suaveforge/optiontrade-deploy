@@ -15,6 +15,12 @@ test "$(stat -c '%a' "$ROOT/secrets/ls-paper.env")" = 600 || { echo "Secret env 
 LIVE_KEY=/root/market-indicator-card/secrets/ls_openapi.local.json
 test -f "$LIVE_KEY" || { echo "LIVE_MARGIN_KEY_MISSING"; exit 3; }
 test -r "$LIVE_KEY" || { echo "LIVE_MARGIN_KEY_UNREADABLE"; exit 3; }
+# Original LIVE secret may be owner-only (0600). Stage a separate owner-only
+# read-only runtime copy for non-root container UID 11001; never relax original.
+"$CLI" -H "$SOCK" run --rm --network none --read-only \
+  -v "$LIVE_KEY:/source/live.json:ro" \
+  -v "$ROOT/secrets:/destination:rw" \
+  alpine:3.20 sh -c 'install -m 0400 -o 11001 -g 11001 /source/live.json /destination/ls-live-margin.json'
 "$CLI" -H "$SOCK" build -t "$IMG" "$ROOT/app"
 if "$CLI" -H "$SOCK" container inspect "$NAME" >/dev/null 2>&1; then
   "$CLI" -H "$SOCK" rm -f "$NAME" >/dev/null
@@ -25,7 +31,7 @@ fi
   --security-opt no-new-privileges:true \
   -p 127.0.0.1:18765:8765 \
   --env-file "$ROOT/secrets/ls-paper.env" \
-  -v "$LIVE_KEY:/run/ls-live-credentials.json:ro" \
+  -v "$ROOT/secrets/ls-live-margin.json:/run/ls-live-credentials.json:ro" \
   -e LS_MODE=PAPER -e LS_LIVE_MARGIN_CREDENTIALS=/run/ls-live-credentials.json \
   "$IMG" >/dev/null
 echo 'OPTIONTRADE_STARTED=127.0.0.1:18765'
