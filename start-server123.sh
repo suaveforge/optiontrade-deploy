@@ -32,6 +32,7 @@ fi
   -p 127.0.0.1:18765:8765 \
   --env-file "$ROOT/secrets/ls-paper.env" \
   -v "$ROOT/secrets/ls-live-margin.json:/run/ls-live-credentials.json:ro" \
-  -e LS_MODE=PAPER -e LS_LIVE_MARGIN_CREDENTIALS=/run/ls-live-credentials.json \
+  -e LS_MODE=PAPER -e LS_WS_URL=wss://openapi.ls-sec.co.kr:29443/websocket \
+  -e LS_LIVE_MARGIN_CREDENTIALS=/run/ls-live-credentials.json \
   "$IMG" >/dev/null
 echo 'OPTIONTRADE_STARTED=127.0.0.1:18765'
