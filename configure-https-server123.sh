@@ -18,7 +18,6 @@ os.chmod(backups,0o700)
 config=Path('/home/gyeol/Caddyfile')
 binary=Path('/home/gyeol/runtime/caddy/caddy')
 snippet=deploy/'Caddyfile.optiontrade'
-password_file=priv/'basic-auth-password.txt'
 lock=deploy/'.caddy-optiontrade.lock'
 import_line=f'import {snippet}'
 hostname='optiontrade.suaveforge.com'
@@ -35,26 +34,8 @@ except Exception:
 fd=os.open(lock,os.O_CREAT|os.O_RDWR,0o600)
 fcntl.flock(fd,fcntl.LOCK_EX)
 try:
-    if not password_file.exists():
-        pwd=secrets.token_urlsafe(28)
-        tmp=priv/'.basic-auth.tmp'
-        with open(tmp,'w') as f:f.write(pwd+'\n')
-        os.chmod(tmp,0o600)
-        os.replace(tmp,password_file)
-    else:
-        pwd=password_file.read_text().strip()
-    if len(pwd)<20:
-        raise RuntimeError('BASIC_AUTH_PASSWORD_TOO_SHORT')
-    h=subprocess.run([str(binary),'hash-password','--algorithm','bcrypt','--plaintext',pwd],
-                     capture_output=True,text=True,timeout=25)
-    if h.returncode!=0 or not h.stdout.strip().startswith('$2'):
-        raise RuntimeError('CADDY_HASH_PASSWORD_FAILED')
-    digest=h.stdout.strip()
-    snippet_text=f'''# Private LS paper-trading dashboard. Never remove basic_auth.
+    snippet_text=f'''# Public read-only LS paper-trading market dashboard.
 {hostname} {{
-    basic_auth bcrypt {{
-        trader {digest}
-    }}
     reverse_proxy {service}
     header {{
         Cache-Control "no-store"
@@ -104,8 +85,7 @@ try:
                                stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=35)
             raise RuntimeError('CADDY_RELOAD_FAILED_RESTORED_MAIN_CONFIG')
         print('OPTIONTRADE_HTTPS_CONFIG=RELOADED')
-    print('OPTIONTRADE_BASIC_AUTH_USER=trader')
-    print('OPTIONTRADE_BASIC_AUTH_PASSWORD_FILE=/home/futures-options-trader/secrets/basic-auth-password.txt')
+    print('OPTIONTRADE_ACCESS=PUBLIC_NO_PASSWORD')
     print('OPTIONTRADE_HTTPS_HOST=optiontrade.suaveforge.com')
 finally:
     fcntl.flock(fd,fcntl.LOCK_UN)
