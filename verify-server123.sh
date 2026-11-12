@@ -19,8 +19,25 @@ for kind in future option; do
     echo "OPTIONTRADE_${kind}_MASTER=UNAVAILABLE_HTTP_${http}"
   fi
 done
-curl -fsS --max-time 18 "$BASE/api/quote?code=A016C000" -o /tmp/optiontrade-quote.json
-grep -Eq '"(price|bid|ask)"[[:space:]]*:[[:space:]]*[1-9][0-9]*(\.[0-9]+)?' /tmp/optiontrade-quote.json
+# The exchange is closed outside day/night sessions. Never require a fresh
+# executable quote or wake the broker then; verify an honest 503 instead.
+quote_http=$(curl -sS --max-time 18 -o /tmp/optiontrade-quote.json -w '%{http_code}' "$BASE/api/quote?code=A016C000" || true)
+quote_degraded=0
+if grep -Eq '"market_time_window"[[:space:]]*:[[:space:]]*"(closed|preopen)"' /tmp/optiontrade-status.json; then
+  test "$quote_http" = 503
+  grep -Fq '장 운영시간 외' /tmp/optiontrade-quote.json
+  echo 'OPTIONTRADE_OFFHOURS_QUOTE=CORRECTLY_BLOCKED'
+else
+  if [ "$quote_http" = 200 ] && grep -Eq '"(price|bid|ask)"[[:space:]]*:[[:space:]]*[1-9][0-9]*(\.[0-9]+)?' /tmp/optiontrade-quote.json; then
+    echo 'OPTIONTRADE_LS_REAL_QUOTE=AVAILABLE'
+  elif [ "$quote_http" = 502 ] || [ "$quote_http" = 503 ]; then
+    quote_degraded=1
+    echo "OPTIONTRADE_LS_REAL_QUOTE=UPSTREAM_DEGRADED_HTTP_$quote_http"
+  else
+    echo "OPTIONTRADE_QUOTE_ROUTE_FAILURE_HTTP_$quote_http"
+    exit 1
+  fi
+fi
 # Verify the actual container override, not just server.py's compiled default.
 # This makes a wrong websocket URL fail deployment smoke immediately.
 CLI=/home/ggul-docker/bin/docker
@@ -78,8 +95,8 @@ async def probe():
 
 asyncio.run(probe())
 PY
-if [ "$catalog_degraded" = 0 ]; then
+if [ "$catalog_degraded" = 0 ] && [ "$quote_degraded" = 0 ]; then
   echo 'OPTIONTRADE_READONLY_VERIFICATION=PASS'
 else
-  echo 'OPTIONTRADE_READONLY_VERIFICATION=DEGRADED_MASTER_REAL_QUOTE_OK'
+  echo "OPTIONTRADE_READONLY_VERIFICATION=DEGRADED_MASTER_$catalog_degraded QUOTE_$quote_degraded"
 fi
