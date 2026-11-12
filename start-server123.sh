@@ -39,7 +39,7 @@ fi
   -v "$ROOT/secrets/ls-live-margin.json:/run/ls-live-credentials.json:ro" \
   -v "$ROOT/cache:/var/lib/optiontrade:rw" \
   -e LS_CATALOG_CACHE_DIR=/var/lib/optiontrade \
-  -e LS_MODE=PAPER -e LS_WS_URL=wss://openapi.ls-sec.co.kr:29443/websocket/futureoption \
+  -e LS_MODE=PAPER -e LS_WS_URL=wss://openapi.ls-sec.co.kr:29443/websocket \
   -e LS_LIVE_MARGIN_CREDENTIALS=/run/ls-live-credentials.json \
   "$IMG" >/dev/null
 echo 'OPTIONTRADE_STARTED=127.0.0.1:18765'
