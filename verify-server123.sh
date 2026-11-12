@@ -34,7 +34,17 @@ assert broker_url.endswith("/websocket/futureoption"), (
     "WRONG_LS_DERIVATIVES_WS_PATH: " + broker_url.split("://")[-1].split("/")[0])
 print("LS_DERIVATIVES_WS_PATH=VERIFIED", flush=True)
 
+async def check_broker_port(name, port):
+    uri = f"wss://openapi.ls-sec.co.kr:{port}/websocket/futureoption"
+    try:
+        async with websockets.connect(uri, open_timeout=7, close_timeout=2) as conn:
+            print(f"LS_BROKER_{name}_WSS=HANDSHAKE_OK", flush=True)
+    except Exception as exc:
+        # Only classification; never include tokens, secrets or credentials.
+        print(f"LS_BROKER_{name}_WSS={type(exc).__name__}", flush=True)
+
 async def probe():
+    await asyncio.gather(check_broker_port("PAPER", 29443), check_broker_port("LIVE", 9443))
     uri = "ws://127.0.0.1:8765/ws/market?code=A016C000&kind=future"
     opened = False
     deadline = time.monotonic() + 30
