@@ -20,7 +20,7 @@ for kind in future option; do
   fi
 done
 curl -fsS --max-time 18 "$BASE/api/quote?code=A016C000" -o /tmp/optiontrade-quote.json
-python3 -c 'import json; q=json.load(open("/tmp/optiontrade-quote.json")); assert any(isinstance(q.get(k),(int,float)) and q[k]>0 for k in ("price","bid","ask")), "No real LS quote"'
+grep -Eq '"(price|bid|ask)"[[:space:]]*:[[:space:]]*[1-9][0-9]*(\.[0-9]+)?' /tmp/optiontrade-quote.json
 if [ "$catalog_degraded" = 0 ]; then
   echo 'OPTIONTRADE_READONLY_VERIFICATION=PASS'
 else
