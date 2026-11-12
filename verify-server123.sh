@@ -30,12 +30,12 @@ import asyncio, json, os, time
 import websockets
 
 broker_url = os.environ.get("LS_WS_URL", "")
-assert broker_url.endswith("/websocket/futureoption"), (
+assert broker_url.endswith("/websocket"), (
     "WRONG_LS_DERIVATIVES_WS_PATH: " + broker_url.split("://")[-1].split("/")[0])
 print("LS_DERIVATIVES_WS_PATH=VERIFIED", flush=True)
 
 async def check_broker_port(name, port):
-    uri = f"wss://openapi.ls-sec.co.kr:{port}/websocket/futureoption"
+    uri = f"wss://openapi.ls-sec.co.kr:{port}/websocket"
     try:
         async with websockets.connect(uri, open_timeout=7, close_timeout=2) as conn:
             print(f"LS_BROKER_{name}_WSS=HANDSHAKE_OK", flush=True)
