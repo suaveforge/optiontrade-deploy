@@ -21,6 +21,49 @@ for kind in future option; do
 done
 curl -fsS --max-time 18 "$BASE/api/quote?code=A016C000" -o /tmp/optiontrade-quote.json
 grep -Eq '"(price|bid|ask)"[[:space:]]*:[[:space:]]*[1-9][0-9]*(\.[0-9]+)?' /tmp/optiontrade-quote.json
+# Verify the actual container override, not just server.py's compiled default.
+# This makes a wrong websocket URL fail deployment smoke immediately.
+CLI=/home/ggul-docker/bin/docker
+SOCK=unix:///home/ggul-docker/run/docker.sock
+"$CLI" -H "$SOCK" exec -i sf-optiontrade python - <<'PY'
+import asyncio, json, os, time
+import websockets
+
+broker_url = os.environ.get("LS_WS_URL", "")
+assert broker_url.endswith("/websocket/futureoption"), (
+    "WRONG_LS_DERIVATIVES_WS_PATH: " + broker_url.split("://")[-1].split("/")[0])
+print("LS_DERIVATIVES_WS_PATH=VERIFIED", flush=True)
+
+async def probe():
+    uri = "ws://127.0.0.1:8765/ws/market?code=A016C000&kind=future"
+    opened = False
+    deadline = time.monotonic() + 30
+    async with websockets.connect(uri, open_timeout=10, close_timeout=2) as connection:
+        while time.monotonic() < deadline:
+            try:
+                payload = json.loads(await asyncio.wait_for(connection.recv(), timeout=min(8, max(.1, deadline-time.monotonic()))))
+            except asyncio.TimeoutError:
+                if opened:
+                    print("LS_DERIVATIVES_WS_DATA=QUIET_SUBSCRIPTION", flush=True)
+                    return
+                continue
+            kind = payload.get("type")
+            if kind == "subscribed":
+                opened = True
+                print("LS_DERIVATIVES_WS_SUBSCRIPTION=OPEN", flush=True)
+            elif kind in ("confirmed", "book", "tick"):
+                print("LS_DERIVATIVES_WS_LIVE_FRAME=YES", flush=True)
+                return
+            elif kind in ("error", "fallback"):
+                raise RuntimeError("LS_DERIVATIVES_WS_UPSTREAM_" + str(kind).upper())
+            elif kind == "warning" and "구독 거절" in str(payload.get("message", "")):
+                raise RuntimeError("LS_DERIVATIVES_WS_SUBSCRIPTION_REJECTED")
+    if not opened:
+        raise RuntimeError("LS_DERIVATIVES_WS_SUBSCRIPTION_TIMEOUT")
+    print("LS_DERIVATIVES_WS_DATA=QUIET_SUBSCRIPTION", flush=True)
+
+asyncio.run(probe())
+PY
 if [ "$catalog_degraded" = 0 ]; then
   echo 'OPTIONTRADE_READONLY_VERIFICATION=PASS'
 else
