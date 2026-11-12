@@ -21,6 +21,11 @@ LIVE_KEY=/root/market-indicator-card/secrets/ls_openapi.local.json
   -v "$LIVE_KEY:/source/live.json:ro" \
   -v "$ROOT/secrets:/destination:rw" \
   alpine:3.20 sh -c 'install -m 0400 -o 11001 -g 11001 /source/live.json /destination/ls-live-margin.json'
+# Keep only previously fetched official contract codes/names across container restarts.
+# No credentials or account data are ever written to this mount.
+"$CLI" -H "$SOCK" run --rm --network none \
+  -v "$ROOT/cache:/catalog-cache:rw" \
+  alpine:3.20 sh -c 'install -d -m 0700 -o 11001 -g 11001 /catalog-cache'
 "$CLI" -H "$SOCK" build -t "$IMG" "$ROOT/app"
 if "$CLI" -H "$SOCK" container inspect "$NAME" >/dev/null 2>&1; then
   "$CLI" -H "$SOCK" rm -f "$NAME" >/dev/null
@@ -32,6 +37,8 @@ fi
   -p 127.0.0.1:18765:8765 \
   --env-file "$ROOT/secrets/ls-paper.env" \
   -v "$ROOT/secrets/ls-live-margin.json:/run/ls-live-credentials.json:ro" \
+  -v "$ROOT/cache:/var/lib/optiontrade:rw" \
+  -e LS_CATALOG_CACHE_DIR=/var/lib/optiontrade \
   -e LS_MODE=PAPER -e LS_WS_URL=wss://openapi.ls-sec.co.kr:29443/websocket \
   -e LS_LIVE_MARGIN_CREDENTIALS=/run/ls-live-credentials.json \
   "$IMG" >/dev/null
